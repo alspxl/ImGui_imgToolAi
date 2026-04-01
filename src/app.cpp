@@ -145,7 +145,7 @@ void Application::DrawMenuBar() {
             status_msg_ = "Applied: Flip Vertical";
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Rotate 90°  CW")) {
+        if (ImGui::MenuItem("Rotate 90° CW")) {
             PushHistory();
             int ow, oh;
             auto* p = ImageProcessor::Rotate(img_mgr_.GetPixels(),
