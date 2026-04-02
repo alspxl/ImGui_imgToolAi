@@ -61,8 +61,8 @@ static void HSLtoRGB(float h, float s, float l, float& r, float& g, float& b) {
 // ── Basic adjustments ─────────────────────────────────────────────────────────
 
 void AdjustBrightness(unsigned char* pixels, int width, int height, int channels, int offset) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
         for (int c = 0; c < nch; ++c)
@@ -71,8 +71,8 @@ void AdjustBrightness(unsigned char* pixels, int width, int height, int channels
 }
 
 void AdjustContrast(unsigned char* pixels, int width, int height, int channels, float factor) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
         for (int c = 0; c < nch; ++c)
@@ -88,8 +88,8 @@ void AdjustGamma(unsigned char* pixels, int width, int height, int channels, flo
     for (int i = 0; i < 256; ++i)
         lut[i] = Clamp8(255.f * std::pow(i / 255.f, inv));
 
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
         for (int c = 0; c < nch; ++c)
@@ -101,8 +101,8 @@ void AdjustGamma(unsigned char* pixels, int width, int height, int channels, flo
 
 void AdjustHSL(unsigned char* pixels, int width, int height, int channels,
                float hueShift, float satScale, float lightShift) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         float h, s, l;
         RGBtoHSL(px[0], px[1], px[2], h, s, l);
@@ -119,8 +119,8 @@ void AdjustHSL(unsigned char* pixels, int width, int height, int channels,
 
 void AdjustColorBalance(unsigned char* pixels, int width, int height, int channels,
                         float rGain, float gGain, float bGain) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         px[0] = Clamp8(px[0] * rGain);
         px[1] = Clamp8(px[1] * gGain);
@@ -129,8 +129,8 @@ void AdjustColorBalance(unsigned char* pixels, int width, int height, int channe
 }
 
 void Grayscale(unsigned char* pixels, int width, int height, int channels) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         float grey = 0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2];
         unsigned char g = Clamp8(grey);
@@ -139,8 +139,8 @@ void Grayscale(unsigned char* pixels, int width, int height, int channels) {
 }
 
 void Invert(unsigned char* pixels, int width, int height, int channels) {
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
         for (int c = 0; c < nch; ++c)
@@ -158,8 +158,8 @@ void Posterize(unsigned char* pixels, int width, int height, int channels, int l
         int bucket = static_cast<int>(std::round(i / step));
         lut[i] = Clamp8(static_cast<float>(bucket) * step);
     }
-    int total = width * height;
-    for (int i = 0; i < total; ++i) {
+    std::size_t total = static_cast<std::size_t>(width) * height;
+    for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
         for (int c = 0; c < nch; ++c)

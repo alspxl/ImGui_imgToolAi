@@ -48,14 +48,18 @@ void Application::Render() {
         bool ctrl = io.KeyCtrl;
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
             int w, h, c; unsigned char* data = nullptr;
-            if (history_.Undo(w, h, c, data)) {
+            if (history_.Undo(img_mgr_.GetWidth(), img_mgr_.GetHeight(),
+                              img_mgr_.GetChannels(), img_mgr_.GetPixels(),
+                              w, h, c, data)) {
                 img_mgr_.SetPixels(data, w, h, c);
                 status_msg_ = "Undo";
             }
         }
         if (ctrl && ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
             int w, h, c; unsigned char* data = nullptr;
-            if (history_.Redo(w, h, c, data)) {
+            if (history_.Redo(img_mgr_.GetWidth(), img_mgr_.GetHeight(),
+                              img_mgr_.GetChannels(), img_mgr_.GetPixels(),
+                              w, h, c, data)) {
                 img_mgr_.SetPixels(data, w, h, c);
                 status_msg_ = "Redo";
             }
@@ -98,14 +102,18 @@ void Application::DrawMenuBar() {
     if (ImGui::BeginMenu("Edit")) {
         if (ImGui::MenuItem("Undo", "Ctrl+Z", false, history_.CanUndo())) {
             int w, h, c; unsigned char* data = nullptr;
-            if (history_.Undo(w, h, c, data)) {
+            if (history_.Undo(img_mgr_.GetWidth(), img_mgr_.GetHeight(),
+                              img_mgr_.GetChannels(), img_mgr_.GetPixels(),
+                              w, h, c, data)) {
                 img_mgr_.SetPixels(data, w, h, c);
                 status_msg_ = "Undo";
             }
         }
         if (ImGui::MenuItem("Redo", "Ctrl+Y", false, history_.CanRedo())) {
             int w, h, c; unsigned char* data = nullptr;
-            if (history_.Redo(w, h, c, data)) {
+            if (history_.Redo(img_mgr_.GetWidth(), img_mgr_.GetHeight(),
+                              img_mgr_.GetChannels(), img_mgr_.GetPixels(),
+                              w, h, c, data)) {
                 img_mgr_.SetPixels(data, w, h, c);
                 status_msg_ = "Redo";
             }
@@ -578,10 +586,13 @@ void Application::DrawStatusBar() {
     if (img_mgr_.HasImage() && cursor_img_x_ >= 0) {
         const unsigned char* px = img_mgr_.GetPixels() +
             (cursor_img_y_ * img_mgr_.GetWidth() + cursor_img_x_) * img_mgr_.GetChannels();
+        int ch = img_mgr_.GetChannels();
         ImGui::Text("Pixel (%d, %d)  R:%d G:%d B:%d A:%d  |  %s",
             cursor_img_x_, cursor_img_y_,
-            px[0], px[1], px[2],
-            img_mgr_.GetChannels() == 4 ? px[3] : 255,
+            ch >= 1 ? px[0] : 0,
+            ch >= 2 ? px[1] : 0,
+            ch >= 3 ? px[2] : 0,
+            ch >= 4 ? px[3] : 255,
             status_msg_.c_str());
     } else {
         ImGui::Text("%s", status_msg_.empty() ? "Ready" : status_msg_.c_str());
