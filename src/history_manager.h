@@ -19,15 +19,21 @@ public:
     // data points to the pixel buffer (width * height * channels bytes).
     void PushState(int width, int height, int channels, const unsigned char* data);
 
-    // Undo: restore the previous state.
-    // Returns true and fills out_width/out_height/out_channels/out_data on success.
-    // The caller takes ownership of out_data (must be freed with delete[]).
-    bool Undo(int& out_width, int& out_height, int& out_channels, unsigned char*& out_data);
+    // Undo: save the *current* image state to the redo stack, then restore the
+    // previous state from the undo stack.
+    // cur_* describe the image that is currently displayed (needed so Redo can
+    // replay it later).  Returns true and fills out_* on success; the caller
+    // takes ownership of out_data (must be freed with delete[]).
+    bool Undo(int cur_width, int cur_height, int cur_channels, const unsigned char* cur_data,
+              int& out_width, int& out_height, int& out_channels, unsigned char*& out_data);
 
-    // Redo: re-apply the previously undone state.
-    // Returns true and fills out_width/out_height/out_channels/out_data on success.
-    // The caller takes ownership of out_data (must be freed with delete[]).
-    bool Redo(int& out_width, int& out_height, int& out_channels, unsigned char*& out_data);
+    // Redo: save the *current* image state to the undo stack, then restore the
+    // next state from the redo stack.
+    // cur_* describe the image that is currently displayed (needed so Undo can
+    // replay it later).  Returns true and fills out_* on success; the caller
+    // takes ownership of out_data (must be freed with delete[]).
+    bool Redo(int cur_width, int cur_height, int cur_channels, const unsigned char* cur_data,
+              int& out_width, int& out_height, int& out_channels, unsigned char*& out_data);
 
     bool CanUndo() const;
     bool CanRedo() const;

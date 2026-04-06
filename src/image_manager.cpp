@@ -86,7 +86,13 @@ void ImageManager::UploadTexture() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    GLenum fmt = (channels_ == 4) ? GL_RGBA : GL_RGB;
+    GLenum fmt;
+    switch (channels_) {
+        case 1:  fmt = GL_RED;  break;
+        case 2:  fmt = GL_RG;   break;
+        case 3:  fmt = GL_RGB;  break;
+        default: fmt = GL_RGBA; break;
+    }
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width_, height_, 0, fmt, GL_UNSIGNED_BYTE, pixels_);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
