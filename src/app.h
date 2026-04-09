@@ -4,6 +4,7 @@
 
 #include "image_manager.h"
 #include "history_manager.h"
+#include "raw16_state.h"
 
 #include <string>
 
@@ -30,6 +31,12 @@ private:
     // ── Dialog helpers ───────────────────────────────────────────────────────
     void DrawOpenDialog();
     void DrawSaveDialog();
+    void DrawRaw16Dialog();
+    void DrawToneMapPanel(ToneMapParams& p, const char* id_prefix, bool show_header);
+
+    // ── 16-bit viewer helpers ────────────────────────────────────────────────
+    void Draw16bitViewer();
+    void Draw16bitToolPanel();
 
     // ── Operation helpers ────────────────────────────────────────────────────
     // Save current image state to history before modifying.
@@ -41,6 +48,10 @@ private:
     GLFWwindow*    window_    = nullptr;
     ImageManager   img_mgr_;
     HistoryManager history_;
+    Raw16State     raw16_;     // 16-bit ray image state
+
+    // Active mode: false = 8-bit image pipeline; true = 16-bit ray image pipeline.
+    bool           mode_16bit_ = false;
 
     // Image viewer state.
     float  zoom_       = 1.0f;
@@ -53,13 +64,23 @@ private:
     // Pixel under cursor.
     int    cursor_img_x_ = -1;
     int    cursor_img_y_ = -1;
+    // For 16-bit mode: 0=none, 1=left/single, 2=right
+    int    cursor_region_ = 0;
 
     // Dialog state.
-    bool        show_open_dialog_ = false;
-    bool        show_save_dialog_ = false;
-    char        open_path_buf_[512] = {};
-    char        save_path_buf_[512] = {};
-    int         save_format_idx_    = 0; // 0=png, 1=jpg, 2=bmp, 3=tga
+    bool        show_open_dialog_  = false;
+    bool        show_save_dialog_  = false;
+    bool        show_raw16_dialog_ = false;
+    char        open_path_buf_[512]  = {};
+    char        save_path_buf_[512]  = {};
+    char        raw16_path_buf_[512] = {};
+    int         save_format_idx_   = 0; // 0=png, 1=jpg, 2=bmp, 3=tga
+
+    // RAW16 import parameters.
+    int  raw16_width_      = 2048;
+    int  raw16_height_     = 2048;
+    int  raw16_offset_     = 0;
+    bool raw16_big_endian_ = false;
 
     // Basic adjustment parameters.
     int   brightness_   = 0;
