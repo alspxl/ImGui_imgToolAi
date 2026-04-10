@@ -59,6 +59,7 @@ add_executable(ImgToolAi
     src/image_processor.cpp
     src/history_manager.cpp
     src/stb_impl.cpp
+    src/raw16_state.cpp
 )
 target_include_directories(ImgToolAi PRIVATE
     ${stb_SOURCE_DIR}
