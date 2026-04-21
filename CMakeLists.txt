@@ -4,12 +4,24 @@ project(ImgToolAi LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+#?C++ O3 PU SIMD (AVX/SSE) 
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-O3 -march=native -ffast-math -ftree-vectorize)
+elseif(MSVC)
+    add_compile_options(/O2 /arch:AVX2 /fp:fast)
+endif()
+
+# ?OpenMP ?(?CPU )
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    add_compile_options(${OpenMP_CXX_FLAGS})
+endif()
+
 include(FetchContent)
 
 # Fetch GLFW
 FetchContent_Declare(glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG 3.3.9
+    URL https://github.com/glfw/glfw/releases/download/3.3.9/glfw-3.3.9.zip
 )
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -18,17 +30,13 @@ FetchContent_MakeAvailable(glfw)
 
 # Fetch Dear ImGui (docking branch)
 FetchContent_Declare(imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG docking
-    GIT_SHALLOW TRUE
+    URL https://github.com/ocornut/imgui/archive/refs/heads/docking.zip
 )
 FetchContent_MakeAvailable(imgui)
 
 # Fetch stb
 FetchContent_Declare(stb
-    GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE
+    URL https://github.com/nothings/stb/archive/refs/heads/master.zip
 )
 FetchContent_MakeAvailable(stb)
 
@@ -52,7 +60,7 @@ target_link_libraries(imgui_lib PUBLIC glfw)
 find_package(OpenGL REQUIRED)
 
 # Application sources
-add_executable(ImgToolAi
+add_executable(ImgToolAi WIN32
     src/main.cpp
     src/app.cpp
     src/image_manager.cpp
@@ -60,6 +68,7 @@ add_executable(ImgToolAi
     src/history_manager.cpp
     src/stb_impl.cpp
     src/raw16_state.cpp
+    src/os_dialogs.cpp
 )
 target_include_directories(ImgToolAi PRIVATE
     ${stb_SOURCE_DIR}
@@ -77,5 +86,9 @@ elseif(APPLE)
         "-framework CoreVideo"
     )
 elseif(WIN32)
-    target_link_libraries(ImgToolAi PRIVATE opengl32)
+    target_link_libraries(ImgToolAi PRIVATE opengl32 comdlg32)
 endif()
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(ImgToolAi PRIVATE OpenMP::OpenMP_CXX)
+endif()
+

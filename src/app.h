@@ -67,6 +67,11 @@ private:
     // For 16-bit mode: 0=none, 1=left/single, 2=right
     int    cursor_region_ = 0;
 
+    // Preview state.
+    bool preview_active_ = false;
+    bool preview_dirty_  = false;
+    float preview_scale_ = 1.0f; // To force resize down if needed? No need.
+
     // Dialog state.
     bool        show_open_dialog_  = false;
     bool        show_save_dialog_  = false;

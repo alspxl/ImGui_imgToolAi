@@ -62,6 +62,7 @@ static void HSLtoRGB(float h, float s, float l, float& r, float& g, float& b) {
 
 void AdjustBrightness(unsigned char* pixels, int width, int height, int channels, int offset) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
@@ -72,6 +73,7 @@ void AdjustBrightness(unsigned char* pixels, int width, int height, int channels
 
 void AdjustContrast(unsigned char* pixels, int width, int height, int channels, float factor) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
@@ -89,6 +91,7 @@ void AdjustGamma(unsigned char* pixels, int width, int height, int channels, flo
         lut[i] = Clamp8(255.f * std::pow(i / 255.f, inv));
 
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
@@ -102,6 +105,7 @@ void AdjustGamma(unsigned char* pixels, int width, int height, int channels, flo
 void AdjustHSL(unsigned char* pixels, int width, int height, int channels,
                float hueShift, float satScale, float lightShift) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         float h, s, l;
@@ -120,6 +124,7 @@ void AdjustHSL(unsigned char* pixels, int width, int height, int channels,
 void AdjustColorBalance(unsigned char* pixels, int width, int height, int channels,
                         float rGain, float gGain, float bGain) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         px[0] = Clamp8(px[0] * rGain);
@@ -130,6 +135,8 @@ void AdjustColorBalance(unsigned char* pixels, int width, int height, int channe
 
 void Grayscale(unsigned char* pixels, int width, int height, int channels) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         float grey = 0.299f * px[0] + 0.587f * px[1] + 0.114f * px[2];
@@ -140,11 +147,13 @@ void Grayscale(unsigned char* pixels, int width, int height, int channels) {
 
 void Invert(unsigned char* pixels, int width, int height, int channels) {
     std::size_t total = static_cast<std::size_t>(width) * height;
+    
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
-        int nch = std::min(channels, 3);
+        int nch = channels > 3 ? 3 : channels;
         for (int c = 0; c < nch; ++c)
-            px[c] = static_cast<unsigned char>(255 - px[c]);
+            px[c] = 255 - px[c];
     }
 }
 
@@ -159,6 +168,7 @@ void Posterize(unsigned char* pixels, int width, int height, int channels, int l
         lut[i] = Clamp8(static_cast<float>(bucket) * step);
     }
     std::size_t total = static_cast<std::size_t>(width) * height;
+    #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < total; ++i) {
         unsigned char* px = pixels + i * channels;
         int nch = std::min(channels, 3);
@@ -190,6 +200,7 @@ unsigned char* GaussianBlur(const unsigned char* pixels, int width, int height, 
     auto* out = new unsigned char[total];
 
     // Horizontal pass.
+    #pragma omp parallel for schedule(dynamic)
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             for (int c = 0; c < channels; ++c) {
@@ -208,6 +219,7 @@ unsigned char* GaussianBlur(const unsigned char* pixels, int width, int height, 
         }
     }
     // Vertical pass.
+    #pragma omp parallel for schedule(dynamic)
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             for (int c = 0; c < channels; ++c) {
@@ -321,19 +333,32 @@ unsigned char* Dehaze(const unsigned char* pixels, int width, int height, int ch
     // Simplified dark-channel prior dehaze.
     // Step 1: compute dark channel with a small patch.
     int patch = std::max(3, std::min(width, height) / 30);
-    std::vector<float> dark(static_cast<std::size_t>(width) * height, 255.f);
+    std::vector<float> min_rgb(static_cast<std::size_t>(width) * height);
+    for (int i = 0; i < width * height; ++i) {
+        const unsigned char* p = pixels + i * channels;
+        min_rgb[i] = std::min({(float)p[0], (float)p[1], (float)p[2]});
+    }
 
+    // Separable minimum filter to compute dark channel
+    std::vector<float> dark_h(min_rgb.size());
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            float mn = 255.f;
+            for (int px = -patch; px <= patch; ++px) {
+                int sx = std::clamp(x + px, 0, width - 1);
+                mn = std::min(mn, min_rgb[y * width + sx]);
+            }
+            dark_h[y * width + x] = mn;
+        }
+    }
+
+    std::vector<float> dark(min_rgb.size());
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             float mn = 255.f;
             for (int py = -patch; py <= patch; ++py) {
-                for (int px = -patch; px <= patch; ++px) {
-                    int sy = std::clamp(y + py, 0, height - 1);
-                    int sx = std::clamp(x + px, 0, width  - 1);
-                    const unsigned char* p = pixels + (sy * width + sx) * channels;
-                    float minc = std::min({(float)p[0], (float)p[1], (float)p[2]});
-                    mn = std::min(mn, minc);
-                }
+                int sy = std::clamp(y + py, 0, height - 1);
+                mn = std::min(mn, dark_h[sy * width + x]);
             }
             dark[y * width + x] = mn;
         }

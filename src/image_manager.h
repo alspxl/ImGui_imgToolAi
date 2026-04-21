@@ -15,7 +15,7 @@ public:
 
     // Load an image from disk.  Converts any channel count to RGBA (4 channels).
     // Returns true on success.
-    bool LoadImage(const std::string& path);
+    bool LoadImageFile(const std::string& path);
 
     // Save the current image to disk.
     // format: "png", "jpg", "bmp", "tga"
@@ -24,6 +24,9 @@ public:
     // Upload the current pixel buffer to an OpenGL texture.
     // Creates a new texture if one does not already exist; updates it otherwise.
     void UploadTexture();
+
+    // Upload an external buffer to the existing texture without modifying the original data.
+    void UpdateTextureFrom(const unsigned char* data);
 
     // Free the OpenGL texture.
     void FreeTexture();

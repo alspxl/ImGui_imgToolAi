@@ -16,6 +16,17 @@
   #include <GL/gl.h>
 #endif
 
+// Handle missing OpenGL constants on Windows
+#ifndef GL_CLAMP_TO_EDGE
+#define GL_CLAMP_TO_EDGE 0x812F
+#endif
+#ifndef GL_RG
+#define GL_RG 0x8227
+#endif
+#ifndef GL_RED
+#define GL_RED 0x1903
+#endif
+
 #include <cstring>
 
 ImageManager::ImageManager()  = default;
@@ -25,7 +36,7 @@ ImageManager::~ImageManager() {
 }
 
 void ImageManager::FreePixels() {
-    // pixels_ is always new[]-allocated after LoadImage normalises stb memory.
+    // pixels_ is always new[]-allocated after LoadImageFile normalises stb memory.
     delete[] pixels_;
     pixels_   = nullptr;
     width_    = 0;
@@ -33,7 +44,7 @@ void ImageManager::FreePixels() {
     channels_ = 0;
 }
 
-bool ImageManager::LoadImage(const std::string& path) {
+bool ImageManager::LoadImageFile(const std::string& path) {
     FreeTexture();
     FreePixels();
 
@@ -94,6 +105,21 @@ void ImageManager::UploadTexture() {
         default: fmt = GL_RGBA; break;
     }
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width_, height_, 0, fmt, GL_UNSIGNED_BYTE, pixels_);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void ImageManager::UpdateTextureFrom(const unsigned char* data) {
+    if (!data || texture_id_ == 0) return;
+
+    glBindTexture(GL_TEXTURE_2D, texture_id_);
+    GLenum fmt;
+    switch (channels_) {
+        case 1:  fmt = GL_RED;  break;
+        case 2:  fmt = GL_RG;   break;
+        case 3:  fmt = GL_RGB;  break;
+        default: fmt = GL_RGBA; break;
+    }
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width_, height_, 0, fmt, GL_UNSIGNED_BYTE, data);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 

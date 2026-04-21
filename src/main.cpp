@@ -69,6 +69,13 @@ int main() {
     style.ScrollbarRounding = 3.f;
     style.GrabRounding      = 3.f;
 
+    // Load Chinese fonts if on Windows
+#ifdef _WIN32
+    ImFontConfig font_cfg;
+    font_cfg.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromFileTTF("c:\\windows\\fonts\\msyh.ttc", 18.0f, &font_cfg, io.Fonts->GetGlyphRangesChineseFull());
+#endif
+
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
