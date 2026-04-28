@@ -384,7 +384,7 @@ void Application::DrawImageViewer() {
             }
         }
     } else {
-        const char* hint = "\xe6\x89\x93\xe5\xbc\x80\xe5\x9b\xbe\xe5\x83\x8f\xe5\xbc\x80\xe5\xa7\x8b\xe4\xbd\xbf\xe7\x94\xa8 (Open an image â€?File > Open Image)";
+        const char* hint = "\xe6\x89\x93\xe5\xbc\x80\xe5\x9b\xbe\xe5\x83\x8f\xe5\xbc\x80\xe5\xa7\x8b\xe4\xbd\xbf\xe7\x94\xa8 (Open an image ï¿½?File > Open Image)";
         ImVec2 ts = ImGui::CalcTextSize(hint);
         dl->AddText(
             ImVec2(canvas_pos.x + (canvas_size.x - ts.x) * 0.5f,
@@ -472,7 +472,12 @@ void Application::Draw16bitViewer() {
     if (raw16_.has_data()) {
         raw16_.MapAndUpload();
 
-        float disp_w = raw16_.width  * zoom_;
+        float img_w = static_cast<float>(raw16_.width);
+        if (raw16_.layout == LayoutMode::DualAligned) {
+            img_w = static_cast<float>(raw16_.width / 2);
+        }
+
+        float disp_w = img_w * zoom_;
         float disp_h = raw16_.height * zoom_;
 
         float img_x = canvas_pos.x + pan_x_ + (canvas_size.x - disp_w) * 0.5f;
@@ -501,7 +506,7 @@ void Application::Draw16bitViewer() {
             }
         }
     } else {
-        const char* hint = "\xe5\xaf\xbc\xe5\x85\xa5 RAW16 \xe6\x88\x96 TIFF 16-bit \xe5\x9b\xbe\xe5\x83\x8f (Import RAW16 or TIFF â€?File > Import RAW16)";
+        const char* hint = "\xe5\xaf\xbc\xe5\x85\xa5 RAW16 \xe6\x88\x96 TIFF 16-bit \xe5\x9b\xbe\xe5\x83\x8f (Import RAW16 or TIFF ï¿½?File > Import RAW16)";
         ImVec2 ts = ImGui::CalcTextSize(hint);
         dl->AddText(
             ImVec2(canvas_pos.x + (canvas_size.x - ts.x) * 0.5f,
@@ -617,23 +622,42 @@ void Application::Draw16bitToolPanel() {
         const char* layouts[] = {
             "\xe5\x8d\x95\xe8\xa7\x86\xe5\x9b\xbe (Single)",
             "\xe5\x8f\x8c\xe9\x80\x9a\xe9\x81\x93 (Two-Channel)",
-            "\xe6\x8b\xbc\xe6\x8e\xa5 (Mosaic)"
+            "\xe6\x8b\xbc\xe6\x8e\xa5 (Mosaic)",
+            "\xe9\xab\x98\xe4\xbd\x8e\xe8\x83\xbd\xe5\xaf\xb9\xe9\xbd\x90 (Dual-Energy Aligned)"
         };
         int layout_idx = static_cast<int>(raw16_.layout);
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::Combo("##layout", &layout_idx, layouts, 3)) {
+        if (ImGui::Combo("##layout", &layout_idx, layouts, 4)) {
             raw16_.layout = static_cast<LayoutMode>(layout_idx);
             raw16_.MarkDirty();
         }
 
-        if (raw16_.layout == LayoutMode::TwoChannel) {
+        if (raw16_.layout == LayoutMode::TwoChannel || raw16_.layout == LayoutMode::DualAligned) {
             ImGui::Spacing();
             if (ImGui::Checkbox("\xe8\x81\x94\xe5\x8a\xa8\xe5\x8f\x82\xe6\x95\xb0 (Link View Params)", &raw16_.link_params))
                 raw16_.MarkDirty();
         }
-        if (raw16_.layout != LayoutMode::Single) {
+        if (raw16_.layout != LayoutMode::Single && raw16_.layout != LayoutMode::DualAligned) {
             if (ImGui::Checkbox("\xe6\x98\xbe\xe7\xa4\xba\xe5\x88\x86\xe5\x89\xb2\xe7\xba\xbf (Show Divider)", &raw16_.show_divider))
                 raw16_.MarkDirty();
+        }
+        
+        if (raw16_.layout == LayoutMode::DualAligned) {
+            ImGui::Spacing();
+            ImGui::Text("\xe5\x8f\xb3\xe9\x80\x9a\xe9\x81\x93\xe5\x81\x8f\xe7\xa7\xbb\xe5\xae\x9a\xe4\xbd\x8d (Right Channel Offset):");
+            bool offset_changed = false;
+            // X offset
+            ImGui::SetNextItemWidth(100);
+            if (ImGui::InputInt("X##alignX", &raw16_.align_offset_x)) offset_changed = true;
+            ImGui::SameLine();
+            // Y offset
+            ImGui::SetNextItemWidth(100);
+            if (ImGui::InputInt("Y##alignY", &raw16_.align_offset_y)) offset_changed = true;
+            
+            if (offset_changed) {
+                // To force recreation of texture, we fake a dirty state
+                raw16_.MarkDirty();
+            }
         }
     }
 
@@ -646,7 +670,7 @@ void Application::Draw16bitToolPanel() {
         }
     } else {
         if (raw16_.link_params) {
-            if (ImGui::CollapsingHeader("\xe6\x98\xbe\xe7\xa4\xba\xe5\x8f\x82\xe6\x95\xb0-\xe8\x81\x94\xe5\x8a\xa8 (Params â€?Linked)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::CollapsingHeader("\xe6\x98\xbe\xe7\xa4\xba\xe5\x8f\x82\xe6\x95\xb0-\xe8\x81\x94\xe5\x8a\xa8 (Params ï¿½?Linked)", ImGuiTreeNodeFlags_DefaultOpen)) {
                 ImGui::BeginDisabled(!has);
                 DrawToneMapPanel(raw16_.params_left, "LR", false);
                 ImGui::EndDisabled();
@@ -998,7 +1022,7 @@ void Application::DrawOpenDialog() {
                             ImVec2(0.5f, 0.5f));
     if (ImGui::Begin("\xe6\x89\x93\xe5\xbc\x80\xe5\x9b\xbe\xe5\x83\x8f (Open Image)##dlg", &show_open_dialog_,
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
-        ImGui::Text("\xe8\xbe\x93\xe5\x85\xa5\xe6\x96\x87\xe4\xbb\xb6\xe8\xb7\xaf\xe5\xbe\x84 (Enter file path) â€?PNG / JPG / BMP / TGA:");
+        ImGui::Text("\xe8\xbe\x93\xe5\x85\xa5\xe6\x96\x87\xe4\xbb\xb6\xe8\xb7\xaf\xe5\xbe\x84 (Enter file path) ï¿½?PNG / JPG / BMP / TGA:");
         ImGui::SetNextItemWidth(-1);
         bool enter = ImGui::InputText("##openpath", open_path_buf_, sizeof(open_path_buf_),
                                       ImGuiInputTextFlags_EnterReturnsTrue);
@@ -1073,7 +1097,7 @@ void Application::DrawRaw16Dialog() {
                      &show_raw16_dialog_,
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse)) {
 
-        ImGui::Text("\xe6\x96\x87\xe4\xbb\xb6\xe8\xb7\xaf\xe5\xbe\x84 (File path) â€?.raw / .bin / .tif / .tiff:");
+        ImGui::Text("\xe6\x96\x87\xe4\xbb\xb6\xe8\xb7\xaf\xe5\xbe\x84 (File path) ï¿½?.raw / .bin / .tif / .tiff:");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##raw16path", raw16_path_buf_, sizeof(raw16_path_buf_));
 
@@ -1107,9 +1131,9 @@ void Application::DrawRaw16Dialog() {
         }
 
         if (is_tiff)
-            ImGui::TextDisabled("\xe6\xa3\x80\xe6\xb5\x8b\xe5\x88\xb0 TIFF \xe6\x89\xa9\xe5\xb1\x95\xe5\x90\x8d\xef\xbc\x8c\xe5\xb0\x86\xe4\xbd\xbf\xe7\x94\xa8 TIFF \xe8\xaf\xa5\xe5\x99\xa8\xe8\xaf\xbb\xe5\x8f\x96 (TIFF extension detected â€?will use TIFF reader)");
+            ImGui::TextDisabled("\xe6\xa3\x80\xe6\xb5\x8b\xe5\x88\xb0 TIFF \xe6\x89\xa9\xe5\xb1\x95\xe5\x90\x8d\xef\xbc\x8c\xe5\xb0\x86\xe4\xbd\xbf\xe7\x94\xa8 TIFF \xe8\xaf\xa5\xe5\x99\xa8\xe8\xaf\xbb\xe5\x8f\x96 (TIFF extension detected ï¿½?will use TIFF reader)");
         else
-            ImGui::TextDisabled("\xe5\x85\xb6\xe4\xbb\x96\xe6\x89\xa9\xe5\xb1\x95\xe5\x90\x8d\xe5\xb0\x86\xe4\xbd\xbf\xe7\x94\xa8 RAW16 \xe8\xaf\xa5\xe5\x99\xa8\xe8\xaf\xbb\xe5\x8f\x96 (Other extension â€?will use RAW16 reader)");
+            ImGui::TextDisabled("\xe5\x85\xb6\xe4\xbb\x96\xe6\x89\xa9\xe5\xb1\x95\xe5\x90\x8d\xe5\xb0\x86\xe4\xbd\xbf\xe7\x94\xa8 RAW16 \xe8\xaf\xa5\xe5\x99\xa8\xe8\xaf\xbb\xe5\x8f\x96 (Other extension ï¿½?will use RAW16 reader)");
 
         if (ImGui::Button("\xe5\xaf\xbc\xe5\x85\xa5 (Import)")) {
             std::string path(raw16_path_buf_);

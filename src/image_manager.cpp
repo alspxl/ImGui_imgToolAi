@@ -8,6 +8,17 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#ifdef _WIN32
+#include <windows.h>
+static std::wstring ImgUtf8ToWstr(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+    std::wstring wstrTo(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+    return wstrTo;
+}
+#endif
+
 // OpenGL
 #if defined(__APPLE__)
   #define GL_SILENCE_DEPRECATION
@@ -50,7 +61,15 @@ bool ImageManager::LoadImageFile(const std::string& path) {
 
     // Always load as RGBA (4 channels) for uniform handling.
     int w = 0, h = 0, c = 0;
-    unsigned char* stb_data = stbi_load(path.c_str(), &w, &h, &c, 4);
+#ifdef _WIN32
+    FILE* f = _wfopen(ImgUtf8ToWstr(path).c_str(), L"rb");
+#else
+    FILE* f = fopen(path.c_str(), "rb");
+#endif
+    if (!f) return false;
+
+    unsigned char* stb_data = stbi_load_from_file(f, &w, &h, &c, 4);
+    fclose(f);
     if (!stb_data) return false;
 
     // Normalise to new[] so all code paths use the same allocator.

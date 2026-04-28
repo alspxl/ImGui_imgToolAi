@@ -251,6 +251,61 @@ void Raw16State::MapAndUpload() {
             }
             break;
         }
+
+        case LayoutMode::DualAligned: {
+            bool left_dirty  = params_left.dirty;
+            bool right_dirty = link_params ? left_dirty : params_right.dirty;
+            
+            int half = W / 2;
+            if (half <= 0) half = W;
+
+            std::vector<uint8_t> left_rgba(static_cast<size_t>(half) * H * 4);
+            std::vector<uint8_t> right_rgba(static_cast<size_t>(half) * H * 4);
+
+            std::vector<uint16_t> left_pix(static_cast<size_t>(half) * H);
+            std::vector<uint16_t> right_pix(static_cast<size_t>(half) * H);
+            
+            for (int y = 0; y < H; ++y) {
+                std::memcpy(left_pix.data()  + y * half, data.data() + y * W,          half * sizeof(uint16_t));
+                std::memcpy(right_pix.data() + y * half, data.data() + y * W + half,   half * sizeof(uint16_t));
+            }
+
+            const ToneMapParams& rp = link_params ? params_left : params_right;
+            FillRGBA(left_pix.data(),  half * H, params_left, left_rgba.data());
+            FillRGBA(right_pix.data(), half * H, rp,          right_rgba.data());
+
+            params_left.dirty  = false;
+            params_right.dirty = false;
+
+            // Composite Low and High (Left: Blue, Right: Green) with offset applied to Right
+            // Only using half width for display. We need to resize rgba vector so it's W/2 x H.
+            rgba.resize(static_cast<size_t>(half) * H * 4);
+            
+            for (int y = 0; y < H; ++y) {
+                for (int x = 0; x < half; ++x) {
+                    size_t out_idx = (y * half + x) * 4;
+                    // Left image goes to Blue
+                    rgba[out_idx + 0] = 0;                      // R
+                    rgba[out_idx + 1] = 0;                      // G
+                    rgba[out_idx + 2] = left_rgba[out_idx + 2]; // B
+                    rgba[out_idx + 3] = 255;
+                    
+                    // Right image goes to Green, with offset
+                    int shift_x = x - align_offset_x;
+                    int shift_y = y - align_offset_y;
+                    if (shift_x >= 0 && shift_x < half && shift_y >= 0 && shift_y < H) {
+                        size_t in_idx = (shift_y * half + shift_x) * 4;
+                        rgba[out_idx + 1] = right_rgba[in_idx + 1]; // G
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    int out_w = width;
+    if (layout == LayoutMode::DualAligned) {
+        out_w = width / 2;
     }
 
     // Upload RGBA8 to OpenGL texture.
@@ -262,21 +317,44 @@ void Raw16State::MapAndUpload() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, W, H, 0,
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_w, H, 0,
                  GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 // ── File loaders ──────────────────────────────────────────────────────────────
 
+#include <iostream>
+
+#ifdef _WIN32
+#include <windows.h>
+static std::wstring Utf8ToWstr(const std::string& str) {
+    if (str.empty()) return std::wstring();
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), NULL, 0);
+    std::wstring wstrTo(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+    return wstrTo;
+}
+#endif
+
 bool LoadRaw16(const std::string& path,
                int width, int height, int offset,
                bool big_endian,
                Raw16State& out) {
-    if (width <= 0 || height <= 0) return false;
+    if (width <= 0 || height <= 0) {
+        std::cerr << "[LoadRaw16] Error: Invalid dimensions (" << width << "x" << height << ")\n";
+        return false;
+    }
 
+#ifdef _WIN32
+    std::ifstream f(Utf8ToWstr(path).c_str(), std::ios::binary);
+#else
     std::ifstream f(path, std::ios::binary);
-    if (!f.is_open()) return false;
+#endif
+    if (!f.is_open()) {
+        std::cerr << "[LoadRaw16] Error: Failed to open file: " << path << "\n";
+        return false;
+    }
 
     // Validate file size.
     f.seekg(0, std::ios::end);
@@ -285,7 +363,12 @@ bool LoadRaw16(const std::string& path,
                             static_cast<std::streamoff>(width) *
                             static_cast<std::streamoff>(height) *
                             static_cast<std::streamoff>(sizeof(uint16_t));
-    if (file_size < needed) return false;
+    if (file_size < needed) {
+        std::cerr << "[LoadRaw16] Error: File too small! Size is " << file_size 
+                  << ", but needed " << needed << " bytes (W=" << width 
+                  << " H=" << height << " Offset=" << offset << ").\n";
+        return false;
+    }
 
     f.seekg(offset, std::ios::beg);
 
@@ -293,8 +376,11 @@ bool LoadRaw16(const std::string& path,
     std::vector<uint16_t> buf(npix);
     f.read(reinterpret_cast<char*>(buf.data()),
            static_cast<std::streamsize>(npix * sizeof(uint16_t)));
-    if (f.gcount() != static_cast<std::streamsize>(npix * sizeof(uint16_t)))
+    if (f.gcount() != static_cast<std::streamsize>(npix * sizeof(uint16_t))) {
+        std::cerr << "[LoadRaw16] Error: Read failed, read " << f.gcount() 
+                  << " bytes, expected " << (npix * sizeof(uint16_t)) << "\n";
         return false;
+    }
 
     if (big_endian) {
         for (auto& v : buf) {
@@ -311,7 +397,22 @@ bool LoadRaw16(const std::string& path,
 
 bool LoadImage16(const std::string& path, Raw16State& out) {
     int w = 0, h = 0, c = 0;
-    uint16_t* raw = stbi_load_16(path.c_str(), &w, &h, &c, 1);
+#ifdef _WIN32
+    FILE* f = _wfopen(Utf8ToWstr(path).c_str(), L"rb");
+#else
+    FILE* f = fopen(path.c_str(), "rb");
+#endif
+    if (!f) return false;
+
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    std::vector<uint8_t> buffer(size);
+    fread(buffer.data(), 1, size, f);
+    fclose(f);
+
+    uint16_t* raw = stbi_load_16_from_memory(buffer.data(), size, &w, &h, &c, 1);
     if (!raw) return false;
 
     size_t npix = static_cast<size_t>(w) * h;

@@ -15,7 +15,8 @@ typedef unsigned int GLuint;
 enum class LayoutMode {
     Single,      // Normal single-view display (full buffer, one set of params).
     TwoChannel,  // Left half / right half are two independent detector channels.
-    Mosaic       // Left and right halves are a spliced mosaic of one channel.
+    Mosaic,      // Left and right halves are a spliced mosaic of one channel.
+    DualAligned  // Left and right halves overlaid (e.g. Cyan/Red) with offset.
 };
 
 // Tone-mapping mode for 16-bit → 8-bit conversion.
@@ -60,6 +61,8 @@ struct Raw16State {
     LayoutMode layout      = LayoutMode::Single;
     bool       link_params = true;   // Two-Channel: link left/right params
     bool       show_divider = true;  // Mosaic / Two-Channel: draw centre divider
+    int        align_offset_x = 0;   // DualAligned: X offset
+    int        align_offset_y = 0;   // DualAligned: Y offset
 
     // ── Tone-map params (left = shared in Single/Mosaic; right = Two-Channel only) ──
     ToneMapParams params_left;

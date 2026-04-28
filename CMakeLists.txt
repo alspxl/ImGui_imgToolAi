@@ -59,6 +59,9 @@ target_link_libraries(imgui_lib PUBLIC glfw)
 # Find OpenGL
 find_package(OpenGL REQUIRED)
 
+# Find TIFF
+find_package(TIFF REQUIRED)
+
 # Application sources
 add_executable(ImgToolAi WIN32
     src/main.cpp
@@ -74,7 +77,7 @@ target_include_directories(ImgToolAi PRIVATE
     ${stb_SOURCE_DIR}
     src/
 )
-target_link_libraries(ImgToolAi PRIVATE imgui_lib OpenGL::GL)
+target_link_libraries(ImgToolAi PRIVATE imgui_lib OpenGL::GL TIFF::TIFF)
 
 # Platform-specific linking
 if(UNIX AND NOT APPLE)
