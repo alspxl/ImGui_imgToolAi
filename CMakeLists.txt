@@ -71,6 +71,7 @@ add_executable(ImgToolAi WIN32
     src/history_manager.cpp
     src/stb_impl.cpp
     src/raw16_state.cpp
+    src/dual_energy.cpp
     src/os_dialogs.cpp
 )
 target_include_directories(ImgToolAi PRIVATE

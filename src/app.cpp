@@ -472,10 +472,18 @@ void Application::Draw16bitViewer() {
     if (raw16_.has_data()) {
         raw16_.MapAndUpload();
 
+        // Dual-energy render (only in TwoChannel mode).
+        if (raw16_.show_dual && raw16_.layout == LayoutMode::TwoChannel)
+            raw16_.RenderDualEnergy();
+
+        // Choose which texture and display width to use.
+        const bool use_dual = raw16_.show_dual &&
+                              raw16_.layout == LayoutMode::TwoChannel &&
+                              raw16_.tex_dual != 0;
+
         float img_w = static_cast<float>(raw16_.width);
-        if (raw16_.layout == LayoutMode::DualAligned) {
+        if (raw16_.layout == LayoutMode::DualAligned || use_dual)
             img_w = static_cast<float>(raw16_.width / 2);
-        }
 
         float disp_w = img_w * zoom_;
         float disp_h = raw16_.height * zoom_;
@@ -483,8 +491,9 @@ void Application::Draw16bitViewer() {
         float img_x = canvas_pos.x + pan_x_ + (canvas_size.x - disp_w) * 0.5f;
         float img_y = canvas_pos.y + pan_y_ + (canvas_size.y - disp_h) * 0.5f;
 
+        GLuint tex_to_show = use_dual ? raw16_.tex_dual : raw16_.tex_display;
         dl->AddImage(
-            (ImTextureID)(uintptr_t)(raw16_.tex_display),
+            (ImTextureID)(uintptr_t)(tex_to_show),
             ImVec2(img_x, img_y),
             ImVec2(img_x + disp_w, img_y + disp_h));
 
@@ -687,6 +696,160 @@ void Application::Draw16bitToolPanel() {
                 ImGui::EndDisabled();
             }
         }
+    }
+
+    // ── 双能渲染 (Dual-Energy Render) ────────────────────────────────────────
+    // Only meaningful when layout is TwoChannel (left = low-E, right = high-E).
+    const bool can_de = (has && raw16_.layout == LayoutMode::TwoChannel);
+    if (ImGui::CollapsingHeader("\xe5\x8f\x8c\xe8\x83\xbd\xe6\xb8\xb2\xe6\x9f\x93 (Dual-Energy Render)")) {
+
+        if (!can_de) {
+            ImGui::TextColored(ImVec4(1.f, 0.7f, 0.f, 1.f),
+                "\xe9\x9c\x80\xe8\xa6\x81 \xe5\x8f\x8c\xe9\x80\x9a\xe9\x81\x93 \xe5\xb8\x83\xe5\xb1\x80"
+                " (Requires Two-Channel layout)");
+        }
+
+        ImGui::BeginDisabled(!can_de);
+
+        // Algorithm selector.
+        const char* algos[] = {
+            "LHR  \xe6\xaf\x94\xe5\x80\xbc\xe6\xb8\xb2\xe6\x9f\x93 (Low/High Ratio)",
+            "LHZ  \xe6\x9c\x89\xe6\x95\x88\xe5\x8e\x9f\xe5\xad\x90\xe5\xba\x8f\xe6\x95\xb0 (Z-eff)",
+            "LHD  \xe5\xaf\xb9\xe6\x95\xb0\xe5\xb7\xae\xe5\x80\xbc (Log Difference)",
+            "\xe7\x89\xa9\xe8\xb4\xa8\xe5\x88\x86\xe8\xa7\xa3 (Material Decomp)"
+        };
+        int algo_idx = static_cast<int>(raw16_.de_params.algo);
+        ImGui::Text("\xe7\xae\x97\xe6\xb3\x95 (Algorithm)");
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##de_algo", &algo_idx, algos, 4)) {
+            raw16_.de_params.algo  = static_cast<DualEnergy::Algorithm>(algo_idx);
+            raw16_.de_params.dirty = true;
+        }
+
+        // Colorscheme.
+        const char* schemes[] = {
+            "\xe5\xae\x89\xe6\xa3\x80\xe9\xa3\x8e\xe6\xa0\xbc (Security)",
+            "\xe7\x9f\xbf\xe9\x80\x89\xe9\xa3\x8e\xe6\xa0\xbc (Mining)",
+            "\xe7\x81\xb0\xe5\xba\xa6 (Grayscale)"
+        };
+        int cs_idx = static_cast<int>(raw16_.de_params.colorscheme);
+        ImGui::Text("\xe9\x85\x8d\xe8\x89\xb2\xe6\x96\xb9\xe6\xa1\x88 (Colorscheme)");
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##de_cs", &cs_idx, schemes, 3)) {
+            raw16_.de_params.colorscheme = static_cast<DualEnergy::Colorscheme>(cs_idx);
+            raw16_.de_params.dirty       = true;
+        }
+
+        // Display range.
+        ImGui::Spacing();
+        ImGui::Text("\xe6\x98\xbe\xe7\xa4\xba\xe8\x8c\x83\xe5\x9b\xb4 (Display Range)");
+        ImGui::SetNextItemWidth(110.f);
+        if (ImGui::InputFloat("Min##de_min", &raw16_.de_params.disp_min, 0, 0, "%.2f"))
+            raw16_.de_params.dirty = true;
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.f);
+        if (ImGui::InputFloat("Max##de_max", &raw16_.de_params.disp_max, 0, 0, "%.2f"))
+            raw16_.de_params.dirty = true;
+
+        // Attenuation/brightness scale.
+        ImGui::Text("\xe4\xba\xae\xe5\xba\xa6\xe8\xa1\xb0\xe5\x87\x8f\xe7\xb3\xbb\xe6\x95\xb0 (Attenuation Scale)");
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##de_att", &raw16_.de_params.att_scale, 0.05f, 5.f, "%.2f"))
+            raw16_.de_params.dirty = true;
+
+        // ── Algorithm-specific parameters ────────────────────────────────
+        ImGui::Spacing();
+
+        if (raw16_.de_params.algo == DualEnergy::Algorithm::LHD) {
+            ImGui::Separator();
+            ImGui::Text("\xe6\x8a\x91\xe5\x88\xb6\xe7\xb3\xbb\xe6\x95\xb0 k  (k = \xc2\xb5_L/\xc2\xb5_H)");
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##de_lhd_k", &raw16_.de_params.lhd_k, 0.5f, 3.0f, "%.3f"))
+                raw16_.de_params.dirty = true;
+            ImGui::TextDisabled("\xe7\x9f\xb3\xe8\x8b\xb1/SiO2: k~1.15   "
+                                "\xe9\x93\x9d: k~1.28   "
+                                "\xe7\x85\xa4: k~1.08");
+            ImGui::TextDisabled("\xe5\xbb\xba\xe8\xae\xae\xe8\x8c\x83\xe5\x9b\xb4: Min=-1.0  Max=1.0");
+        }
+
+        if (raw16_.de_params.algo == DualEnergy::Algorithm::LHZ) {
+            ImGui::Separator();
+            ImGui::Text("\xe5\xba\xb7\xe6\x99\xae\xe9\xa1\xbf\xe8\x80\xa6\xe5\x90\x88\xe7\xb3\xbb\xe6\x95\xb0 k_C  (Compton k_C)");
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderFloat("##de_kc", &raw16_.de_params.z_kC, 0.3f, 1.5f, "%.3f"))
+                raw16_.de_params.dirty = true;
+            ImGui::TextDisabled("60/140 kV: k_C~0.70   80/160 kV: k_C~0.72");
+
+            ImGui::Spacing();
+            ImGui::Text("Z_eff = a \xc2\xb7 R^b + c  (\xe6\xa0\x87\xe5\xae\x9a\xe5\xa4\x9a\xe9\xa1\xb9\xe5\xbc\x8f)");
+            ImGui::SetNextItemWidth(80.f);
+            if (ImGui::InputFloat("a##de_za", &raw16_.de_params.z_a, 0, 0, "%.2f"))
+                raw16_.de_params.dirty = true;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.f);
+            if (ImGui::InputFloat("b##de_zb", &raw16_.de_params.z_b, 0, 0, "%.2f"))
+                raw16_.de_params.dirty = true;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80.f);
+            if (ImGui::InputFloat("c##de_zc", &raw16_.de_params.z_c, 0, 0, "%.2f"))
+                raw16_.de_params.dirty = true;
+            ImGui::TextDisabled("\xe5\xbb\xba\xe8\xae\xae\xe8\x8c\x83\xe5\x9b\xb4: Min=2  Max=30");
+        }
+
+        if (raw16_.de_params.algo == DualEnergy::Algorithm::MaterialDecomp) {
+            ImGui::Separator();
+            ImGui::Text("\xe5\x9f\xba\xe6\x9d\x90\xe6\x96\x99\xe8\xa1\xb0\xe5\x87\x8f\xe7\xb3\xbb\xe6\x95\xb0 (Basis Material \xc2\xb5)");
+            ImGui::TextDisabled("\xe6\x9d\x90\xe6\x96\x99 1 (\xe4\xbd\x8eZ, e.g. \xe8\x81\x9a\xe4\xb9\x99\xe7\x83\xaf/\xe9\x93\x9d)");
+            ImGui::SetNextItemWidth(115.f);
+            if (ImGui::InputFloat("\xc2\xb5\xe2\x82\x81L##mu1l", &raw16_.de_params.mu1L, 0, 0, "%.4f"))
+                raw16_.de_params.dirty = true;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(115.f);
+            if (ImGui::InputFloat("\xc2\xb5\xe2\x82\x81H##mu1h", &raw16_.de_params.mu1H, 0, 0, "%.4f"))
+                raw16_.de_params.dirty = true;
+            ImGui::TextDisabled("\xe6\x9d\x90\xe6\x96\x99 2 (\xe9\xab\x98Z, e.g. \xe9\x93\x81/\xe9\x93\x9c)");
+            ImGui::SetNextItemWidth(115.f);
+            if (ImGui::InputFloat("\xc2\xb5\xe2\x82\x82L##mu2l", &raw16_.de_params.mu2L, 0, 0, "%.4f"))
+                raw16_.de_params.dirty = true;
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(115.f);
+            if (ImGui::InputFloat("\xc2\xb5\xe2\x82\x82H##mu2h", &raw16_.de_params.mu2H, 0, 0, "%.4f"))
+                raw16_.de_params.dirty = true;
+        }
+
+        // Air reference levels (optional manual override).
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Text("\xe7\xa9\xba\xe6\xb0\x94\xe5\x8f\x82\xe8\x80\x83\xe5\x80\xbc (Air Ref, 0=\xe8\x87\xaa\xe5\x8a\xa8)");
+        ImGui::SetNextItemWidth(115.f);
+        if (ImGui::InputFloat("Low##de_refL", &raw16_.de_params.ref_low, 0, 0, "%.0f"))
+            raw16_.de_params.dirty = true;
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(115.f);
+        if (ImGui::InputFloat("High##de_refH", &raw16_.de_params.ref_high, 0, 0, "%.0f"))
+            raw16_.de_params.dirty = true;
+
+        // Enable toggle + manual refresh.
+        ImGui::Spacing();
+        ImGui::Separator();
+        if (ImGui::Checkbox(
+                "\xe5\x90\xaf\xe7\x94\xa8\xe5\x8f\x8c\xe8\x83\xbd\xe6\xb8\xb2\xe6\x9f\x93"
+                " (Enable Dual-Energy)##de_en",
+                &raw16_.show_dual)) {
+            if (raw16_.show_dual)
+                raw16_.de_params.dirty = true;
+            else
+                status_msg_ = "\xe5\x8f\x8c\xe8\x83\xbd\xe6\xb8\xb2\xe6\x9f\x93\xe5\xb7\xb2\xe5\x85\xb3\xe9\x97\xad (Dual-Energy disabled)";
+        }
+        if (raw16_.show_dual) {
+            ImGui::SameLine();
+            if (ImGui::Button("\xe5\x88\xb7\xe6\x96\xb0 (Refresh)##de_refresh")) {
+                raw16_.de_params.dirty = true;
+                status_msg_ = "\xe5\x8f\x8c\xe8\x83\xbd\xe6\xb8\xb2\xe6\x9f\x93\xe5\xb7\xb2\xe5\x88\xb7\xe6\x96\xb0 (DE refreshed)";
+            }
+        }
+
+        ImGui::EndDisabled();
     }
 
     ImGui::Separator();

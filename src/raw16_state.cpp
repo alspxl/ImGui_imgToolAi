@@ -161,6 +161,10 @@ void Raw16State::FreeTexture() {
         glDeleteTextures(1, &tex_display);
         tex_display = 0;
     }
+    if (tex_dual) {
+        glDeleteTextures(1, &tex_dual);
+        tex_dual = 0;
+    }
 }
 
 void Raw16State::MapAndUpload() {
@@ -320,6 +324,49 @@ void Raw16State::MapAndUpload() {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_w, H, 0,
                  GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
     glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+// ── Dual-energy rendering ──────────────────────────────────────────────────────
+
+void Raw16State::RenderDualEnergy() {
+    if (!has_data() || layout != LayoutMode::TwoChannel) return;
+    if (!de_params.dirty && tex_dual != 0) return;
+
+    const int W    = width;
+    const int H    = height;
+    const int half = W / 2;
+    if (half <= 0) return;
+
+    // Extract low-energy (left) and high-energy (right) half-row buffers.
+    std::vector<uint16_t> low_pix(static_cast<size_t>(half) * H);
+    std::vector<uint16_t> hi_pix(static_cast<size_t>(half) * H);
+    for (int y = 0; y < H; ++y) {
+        std::memcpy(low_pix.data() + y * half,
+                    data.data()    + y * W,
+                    half * sizeof(uint16_t));
+        std::memcpy(hi_pix.data()  + y * half,
+                    data.data()    + y * W + half,
+                    half * sizeof(uint16_t));
+    }
+
+    // Run the selected dual-energy algorithm.
+    std::vector<uint8_t> rgba(static_cast<size_t>(half) * H * 4);
+    DualEnergy::Render(low_pix.data(), hi_pix.data(), half, H, de_params, rgba.data());
+
+    // Upload result to an OpenGL texture.
+    if (tex_dual == 0)
+        glGenTextures(1, &tex_dual);
+
+    glBindTexture(GL_TEXTURE_2D, tex_dual);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, half, H, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    de_params.dirty = false;
 }
 
 // ── File loaders ──────────────────────────────────────────────────────────────
