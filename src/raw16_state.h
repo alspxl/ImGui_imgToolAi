@@ -1,7 +1,9 @@
 #pragma once
 // raw16_state.h
 // 16-bit grayscale image state: data storage, layout modes, tone-mapping params,
-// and cached RGBA8 display textures.
+// and cached RGBA8 display textures.  Also owns the dual-energy render output.
+
+#include "dual_energy.h"
 
 #include <cstdint>
 #include <string>
@@ -68,6 +70,14 @@ struct Raw16State {
     ToneMapParams params_left;
     ToneMapParams params_right;
 
+    // ── Dual-energy rendering ───────────────────────────────────────────────
+    // Active when show_dual == true and layout == LayoutMode::TwoChannel.
+    // The left half of data[] is the low-energy channel; the right half is
+    // the high-energy channel.
+    DualEnergy::Params de_params;
+    bool               show_dual  = false;  // show dual-energy output in viewer
+    GLuint             tex_dual   = 0;      // RGBA8 texture of the DE result
+
     // ── OpenGL textures ─────────────────────────────────────────────────────
     // In Single / Mosaic mode only tex_display is used.
     // In Two-Channel mode we upload one combined texture (L on left, R on right).
@@ -93,7 +103,13 @@ struct Raw16State {
     void MarkDirty() {
         params_left.dirty  = true;
         params_right.dirty = true;
+        de_params.dirty    = true;
     }
+
+    // Compute the dual-energy RGBA8 result and upload to tex_dual.
+    // Requires layout == LayoutMode::TwoChannel.
+    // No-op if de_params.dirty == false and tex_dual is already valid.
+    void RenderDualEnergy();
 };
 
 // ── Stand-alone helper functions ──────────────────────────────────────────────
